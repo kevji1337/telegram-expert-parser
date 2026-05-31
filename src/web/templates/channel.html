@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}{{ row.title }} - TG Parser{% endblock %}
+{% block content %}
+<div class="page-header">
+    <a href="/" class="text-muted">← Назад к списку</a>
+    <h1 class="page-title" style="margin-top: 8px;">
+        {{ row.title }}
+        {% if row.is_expert_channel in ['True', 'true', '1'] %}<span class="badge badge-expert">EXPERT</span>{% endif %}
+        <span class="badge badge-{{ row.analysis_priority }}">{{ row.analysis_priority }}</span>
+    </h1>
+    <p class="page-subtitle">
+        <a href="{{ row.link }}" target="_blank">{{ row.link }}</a> · {{ row.username }} · <strong>{{ row.participants_count }}</strong> подписчиков
+    </p>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card"><div class="num">{{ row.channel_type }}</div><div class="label">Тип</div></div>
+    <div class="stat-card accent"><div class="num">{{ row.expert_score }}</div><div class="label">Expert Score</div></div>
+    <div class="stat-card success"><div class="num">{{ row.analysis_queue_score }}</div><div class="label">AQ Score</div></div>
+    <div class="stat-card warning"><div class="num">{{ row.monetization_score }}</div><div class="label">Monetization</div></div>
+    <div class="stat-card"><div class="num">{{ row.avg_post_reach }}</div><div class="label">Охват</div></div>
+    <div class="stat-card"><div class="num">{{ row.err_percent }}%</div><div class="label">ERR</div></div>
+    <div class="stat-card"><div class="num">{{ row.avg_comments }}</div><div class="label">Комменты</div></div>
+    <div class="stat-card"><div class="num">{{ row.posts_per_week }}</div><div class="label">Постов/нед</div></div>
+    <div class="stat-card purple"><div class="num">{{ row.sentiment_score }}</div><div class="label">Sentiment</div></div>
+    <div class="stat-card"><div class="num">{{ row.growth_rate }}%</div><div class="label">Рост/день</div></div>
+</div>
+
+{% if row.about %}
+<div class="card">
+    <h3>Описание</h3>
+    <div class="text-block">{{ row.about }}</div>
+</div>
+{% endif %}
+
+{% if row.pinned_text %}
+<div class="card">
+    <h3>Закреплённое сообщение</h3>
+    <div class="text-block">{{ row.pinned_text }}</div>
+</div>
+{% endif %}
+
+<div class="card">
+    <h3>Сигналы</h3>
+    <div class="signals">
+        {% for sig in row.top_signals.split(',') %}
+        {% if sig %}<span class="badge badge-primary">{{ sig }}</span>{% endif %}
+        {% endfor %}
+        {% if row.false_positive_reason %}<span class="badge badge-fp">{{ row.false_positive_reason }}</span>{% endif %}
+    </div>
+</div>
+
+{% if row.external_links %}
+<div class="card">
+    <h3>Внешние ссылки</h3>
+    <div class="text-block">{{ row.external_links }}</div>
+</div>
+{% endif %}
+
+{% if row.mentioned_channels %}
+<div class="card">
+    <h3>Упомянутые каналы</h3>
+    <div class="text-block">{{ row.mentioned_channels }}</div>
+</div>
+{% endif %}
+
+{% if row.top_post_link %}
+<div class="card">
+    <h3>Топ-пост</h3>
+    <p><a href="{{ row.top_post_link }}" target="_blank">{{ row.top_post_link }}</a> · <strong>{{ row.top_post_views }}</strong> просмотров</p>
+</div>
+{% endif %}
+{% endblock %}

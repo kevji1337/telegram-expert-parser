@@ -1,0 +1,34 @@
+# секреты
+*.env
+!.env.example
+
+# venv
+.venv/
+venv/
+
+# Telethon-сессии
+sessions/
+*.session
+*.session-journal
+
+# Кэши и состояние парсера
+cache.db
+progress.json
+search_cache.json
+channel_cache.json
+
+# Результаты
+results/
+
+# Python мусор
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Архив
+archive/

@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Запуск парсера - TG Parser{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Запуск парсера</h1>
+    <p class="page-subtitle">Управление парсером и просмотр логов в реальном времени</p>
+</div>
+
+<div class="card">
+    <div class="toolbar">
+        <span id="status-pill" class="status-pill idle">
+            <span class="dot"></span>
+            <span id="status-text">Не запущен</span>
+        </span>
+        <button id="btn-start" class="btn btn-success">▶ Запустить</button>
+        <button id="btn-stop" class="btn btn-danger" disabled>■ Остановить</button>
+        <button id="btn-clear" class="btn btn-secondary">Очистить консоль</button>
+        <div style="margin-left: auto;" class="text-muted">
+            <span id="log-count">0</span> строк лога
+        </div>
+    </div>
+
+    <div id="console" class="console"></div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const consoleEl = document.getElementById('console');
+const statusPill = document.getElementById('status-pill');
+const statusText = document.getElementById('status-text');
+const btnStart = document.getElementById('btn-start');
+const btnStop = document.getElementById('btn-stop');
+const btnClear = document.getElementById('btn-clear');
+const logCountEl = document.getElementById('log-count');
+
+let lastIdx = 0;
+let pollTimer = null;
+let autoScroll = true;
+
+const STATUS_LABELS = {
+    'idle': 'Не запущен',
+    'running': 'Работает',
+    'finished': 'Завершён',
+    'error': 'Ошибка'
+};
+
+function setStatus(status) {
+    statusPill.className = 'status-pill ' + status;
+    statusText.textContent = STATUS_LABELS[status] || status;
+    btnStart.disabled = (status === 'running');
+    btnStop.disabled = (status !== 'running');
+}
+
+function appendLog(line) {
+    const div = document.createElement('div');
+    div.className = 'console-line';
+    if (/\[!\]|error|ошибка|FloodWait/i.test(line)) div.classList.add('warn');
+    if (/\[ERROR\]|Traceback|Exception/i.test(line)) div.classList.add('error');
+    if (/\[OK\]|\[✓\]|\[\+\]/.test(line)) div.classList.add('success');
+    div.textContent = line;
+    consoleEl.appendChild(div);
+    if (autoScroll) consoleEl.scrollTop = consoleEl.scrollHeight;
+}
+
+// Отключаем автоскролл если пользователь скроллит вверх
+consoleEl.addEventListener('scroll', () => {
+    const atBottom = consoleEl.scrollHeight - consoleEl.scrollTop - consoleEl.clientHeight < 30;
+    autoScroll = atBottom;
+});
+
+async function fetchLogs() {
+    try {
+        const res = await fetch(`/api/parser/logs?since=${lastIdx}`);
+        const data = await res.json();
+        for (const line of data.logs) appendLog(line);
+        lastIdx = data.next;
+        logCountEl.textContent = lastIdx;
+        setStatus(data.status);
+
+        if (data.status !== 'running' && data.logs.length === 0) {
+            // больше нечего ждать
+            clearInterval(pollTimer);
+            pollTimer = null;
+        }
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+function startPolling() {
+    if (pollTimer) return;
+    fetchLogs();
+    pollTimer = setInterval(fetchLogs, 1000);
+}
+
+function clearConsole() {
+    while (consoleEl.firstChild) consoleEl.removeChild(consoleEl.firstChild);
+}
+
+btnStart.addEventListener('click', async () => {
+    const res = await fetch('/api/parser/start', {method: 'POST'});
+    const data = await res.json();
+    if (data.error) {
+        alert(data.error);
+        return;
+    }
+    lastIdx = 0;
+    clearConsole();
+    setStatus('running');
+    startPolling();
+});
+
+btnStop.addEventListener('click', async () => {
+    if (!confirm('Остановить парсер? Прогресс будет сохранён.')) return;
+    await fetch('/api/parser/stop', {method: 'POST'});
+});
+
+btnClear.addEventListener('click', () => {
+    clearConsole();
+});
+
+// Инициализация: получаем текущий статус
+(async () => {
+    const res = await fetch('/api/parser/status');
+    const data = await res.json();
+    setStatus(data.status);
+    if (data.status === 'running' || data.log_count > 0) {
+        startPolling();
+    }
+})();
+</script>
+{% endblock %}

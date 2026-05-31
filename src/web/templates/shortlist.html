@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} - TG Parser{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">{{ title }}</h1>
+    <p class="page-subtitle">{{ subtitle }} — {{ rows|length }} каналов</p>
+</div>
+
+{% for row in rows %}
+<div class="card">
+    <h3>
+        <a href="{{ row.link }}" target="_blank">{{ row.title }}</a>
+        {% if row.is_expert_channel in ['True', 'true', '1'] %}<span class="badge badge-expert">EXPERT</span>{% endif %}
+        <span class="badge badge-{{ row.analysis_priority }}">{{ row.analysis_priority }}</span>
+    </h3>
+    <div class="meta">
+        {{ row.username }} · <strong>{{ row.participants_count }}</strong> подписчиков · {{ row.channel_type }}
+    </div>
+    <div class="stats-row">
+        <div class="stat-mini">Охват: <strong>{{ row.avg_post_reach }}</strong></div>
+        <div class="stat-mini">ERR: <strong>{{ row.err_percent }}%</strong></div>
+        <div class="stat-mini">Комменты: <strong>{{ row.avg_comments }}</strong></div>
+        <div class="stat-mini">Постов/нед: <strong>{{ row.posts_per_week }}</strong></div>
+        <div class="stat-mini">Expert: <strong>{{ row.expert_score }}</strong></div>
+        <div class="stat-mini">AQ: <strong>{{ row.analysis_queue_score }}</strong></div>
+        <div class="stat-mini">Sentiment: <strong>{{ row.sentiment_score }}</strong></div>
+    </div>
+    {% if row.about %}
+    <div class="text-block">{{ row.about[:400] }}</div>
+    {% endif %}
+    <div class="signals" style="margin-top: 12px;">
+        {% for sig in row.top_signals.split(',') %}
+        {% if sig %}<span class="badge badge-primary">{{ sig }}</span>{% endif %}
+        {% endfor %}
+    </div>
+    {% if row.external_links %}
+    <div class="meta" style="margin-top: 12px;">
+        <strong>Внешние ссылки:</strong> {{ row.external_links[:300] }}
+    </div>
+    {% endif %}
+</div>
+{% endfor %}
+{% endblock %}

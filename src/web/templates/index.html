@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Каналы - TG Parser{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Каналы</h1>
+    <p class="page-subtitle">{{ stats.filtered }} из {{ stats.total }} каналов отображено</p>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card"><div class="num">{{ stats.total }}</div><div class="label">Всего</div></div>
+    <div class="stat-card success"><div class="num">{{ stats.analyze }}</div><div class="label">Analyze</div></div>
+    <div class="stat-card warning"><div class="num">{{ stats.reserve }}</div><div class="label">Reserve</div></div>
+    <div class="stat-card danger"><div class="num">{{ stats.ignore }}</div><div class="label">Ignore</div></div>
+    <div class="stat-card purple"><div class="num">{{ stats.expert }}</div><div class="label">Эксперты</div></div>
+    <div class="stat-card accent"><div class="num">{{ stats.selected }}</div><div class="label">Отобрано</div></div>
+</div>
+
+<div class="filters">
+    <form method="GET">
+        <input type="text" name="search" placeholder="Поиск по названию/описанию..." value="{{ filters.search }}" style="flex: 1; min-width: 200px;">
+        <select name="priority">
+            <option value="">Все приоритеты</option>
+            <option value="ANALYZE" {% if filters.priority == 'ANALYZE' %}selected{% endif %}>ANALYZE</option>
+            <option value="RESERVE" {% if filters.priority == 'RESERVE' %}selected{% endif %}>RESERVE</option>
+            <option value="IGNORE" {% if filters.priority == 'IGNORE' %}selected{% endif %}>IGNORE</option>
+        </select>
+        <select name="niche">
+            <option value="">Все ниши</option>
+            {% for n in niches %}
+            <option value="{{ n }}" {% if filters.niche == n %}selected{% endif %}>{{ n }}</option>
+            {% endfor %}
+        </select>
+        <select name="channel_type">
+            <option value="">Все типы</option>
+            <option value="expert" {% if filters.channel_type == 'expert' %}selected{% endif %}>expert</option>
+            <option value="news" {% if filters.channel_type == 'news' %}selected{% endif %}>news</option>
+            <option value="brand" {% if filters.channel_type == 'brand' %}selected{% endif %}>brand</option>
+            <option value="community" {% if filters.channel_type == 'community' %}selected{% endif %}>community</option>
+            <option value="aggregator" {% if filters.channel_type == 'aggregator' %}selected{% endif %}>aggregator</option>
+        </select>
+        <input type="number" name="min_subs" placeholder="Мин. подп." value="{{ filters.min_subs }}" style="width: 110px;">
+        <input type="number" name="min_score" placeholder="Мин. score" value="{{ filters.min_score }}" style="width: 110px;">
+        <label><input type="checkbox" name="expert_only" value="1" {% if filters.expert_only == '1' %}checked{% endif %}> Эксперты</label>
+        <label><input type="checkbox" name="no_fp" value="1" {% if filters.no_fp == '1' %}checked{% endif %}> Без FP</label>
+        <button type="submit" class="btn">Применить</button>
+        <a href="/" class="btn btn-secondary">Сброс</a>
+    </form>
+</div>
+
+<div class="table-wrap">
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 40px;">#</th>
+                <th>Канал</th>
+                <th>Подп.</th>
+                <th>Охват</th>
+                <th>ERR</th>
+                <th>Комм.</th>
+                <th>Тип</th>
+                <th>Expert</th>
+                <th>AQ</th>
+                <th>Priority</th>
+                <th>Ниша</th>
+                <th>Сигналы</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr>
+                <td class="text-muted">{{ loop.index }}</td>
+                <td>
+                    <a href="{{ row.link }}" target="_blank"><strong>{{ row.title[:50] }}</strong></a>
+                    <div class="text-muted">{{ row.username }}</div>
+                </td>
+                <td><strong>{{ row.participants_count }}</strong></td>
+                <td>{{ row.avg_post_reach }}</td>
+                <td>{{ row.err_percent }}%</td>
+                <td>{{ row.avg_comments }}</td>
+                <td><span class="badge">{{ row.channel_type }}</span></td>
+                <td>
+                    {% if row.is_expert_channel in ['True', 'true', '1'] %}
+                    <span class="badge badge-expert">{{ row.expert_score }}</span>
+                    {% else %}
+                    <span class="text-muted">{{ row.expert_score }}</span>
+                    {% endif %}
+                </td>
+                <td>{{ row.analysis_queue_score }}</td>
+                <td><span class="badge badge-{{ row.analysis_priority }}">{{ row.analysis_priority }}</span></td>
+                <td class="text-muted">{{ row.matched_niches[:30] }}</td>
+                <td>
+                    <div class="signals">
+                        {% for sig in row.top_signals.split(',') %}
+                        {% if sig %}<span class="badge badge-primary">{{ sig }}</span>{% endif %}
+                        {% endfor %}
+                        {% if row.false_positive_reason %}<span class="badge badge-fp">{{ row.false_positive_reason }}</span>{% endif %}
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if rows|length >= 200 %}
+<p style="text-align: center; color: var(--text-muted); margin-top: 20px;">Показаны первые 200 каналов. Используйте фильтры для уточнения.</p>
+{% endif %}
+{% endblock %}
