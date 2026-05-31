@@ -139,6 +139,107 @@ def parser_page():
     return render_template("parser.html")
 
 
+@app.route("/dashboard")
+def dashboard():
+    """Дашборд с графиками распределений"""
+    return render_template("dashboard.html")
+
+
+@app.route("/api/dashboard_data")
+def api_dashboard_data():
+    """Агрегаты для графиков на дашборде"""
+    rows = load_csv(OUTPUT_CSV)
+
+    def _int(v, default=0):
+        try:
+            return int(float(v or 0))
+        except (ValueError, TypeError):
+            return default
+
+    def _float(v, default=0.0):
+        try:
+            return float(v or 0)
+        except (ValueError, TypeError):
+            return default
+
+    niche_counts: dict[str, int] = {}
+    type_counts: dict[str, int] = {}
+    priority_counts = {"ANALYZE": 0, "RESERVE": 0, "IGNORE": 0}
+    expert_score_buckets = {"0-20": 0, "20-40": 0, "40-60": 0, "60-80": 0, "80-100": 0}
+    growth_buckets = {"<0%": 0, "0%": 0, "0-1%": 0, "1-5%": 0, ">5%": 0}
+    verified_count = 0
+    scam_count = 0
+
+    top_growers = []
+
+    for r in rows:
+        for n in (r.get("matched_niches", "") or "").split(","):
+            n = n.strip()
+            if n:
+                niche_counts[n] = niche_counts.get(n, 0) + 1
+
+        t = (r.get("channel_type") or "unknown").strip()
+        type_counts[t] = type_counts.get(t, 0) + 1
+
+        p = (r.get("analysis_priority") or "IGNORE").strip()
+        if p in priority_counts:
+            priority_counts[p] += 1
+
+        es = _int(r.get("expert_score"))
+        if es < 20:
+            expert_score_buckets["0-20"] += 1
+        elif es < 40:
+            expert_score_buckets["20-40"] += 1
+        elif es < 60:
+            expert_score_buckets["40-60"] += 1
+        elif es < 80:
+            expert_score_buckets["60-80"] += 1
+        else:
+            expert_score_buckets["80-100"] += 1
+
+        gr = _float(r.get("growth_rate"))
+        if gr < 0:
+            growth_buckets["<0%"] += 1
+        elif gr == 0:
+            growth_buckets["0%"] += 1
+        elif gr <= 1:
+            growth_buckets["0-1%"] += 1
+        elif gr <= 5:
+            growth_buckets["1-5%"] += 1
+        else:
+            growth_buckets[">5%"] += 1
+
+        if r.get("is_verified") in ("True", "true", "1"):
+            verified_count += 1
+        if r.get("is_scam") in ("True", "true", "1"):
+            scam_count += 1
+
+        if gr > 0:
+            top_growers.append({
+                "title": r.get("title") or r.get("username") or "?",
+                "username": r.get("username") or "",
+                "link": r.get("link") or "",
+                "growth_rate": gr,
+                "participants_count": _int(r.get("participants_count")),
+            })
+
+    top_growers.sort(key=lambda x: x["growth_rate"], reverse=True)
+
+    return jsonify({
+        "totals": {
+            "total": len(rows),
+            "verified": verified_count,
+            "scam": scam_count,
+        },
+        "niches": niche_counts,
+        "types": type_counts,
+        "priorities": priority_counts,
+        "expert_score_buckets": expert_score_buckets,
+        "growth_buckets": growth_buckets,
+        "top_growers": top_growers[:10],
+    })
+
+
 # === API: статистика и обновление ===
 
 @app.route("/api/stats")

@@ -209,6 +209,12 @@ def calc_priority(row: ChannelRow) -> str:
 def build_top_signals(row: ChannelRow) -> str:
     """Формирует список топ-сигналов канала"""
     s: list[str] = []
+    if row.is_verified:
+        s.append("verified")
+    if row.is_scam:
+        s.append("SCAM")
+    if row.is_fake:
+        s.append("FAKE")
     if row.pinned_text:
         s.append("pin")
     if row.has_consulting_offer == "True":

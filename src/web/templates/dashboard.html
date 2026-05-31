@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}Дашборд - TG Parser{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Дашборд</h1>
+    <p class="page-subtitle">Распределения и тренды по каналам</p>
+</div>
+
+<div class="stats-grid" id="topStats">
+    <div class="stat-card"><div class="num" id="statTotal">—</div><div class="label">Всего</div></div>
+    <div class="stat-card success"><div class="num" id="statVerified">—</div><div class="label">Verified</div></div>
+    <div class="stat-card danger"><div class="num" id="statScam">—</div><div class="label">Scam</div></div>
+</div>
+
+<div class="charts-grid">
+    <div class="chart-card">
+        <h3>Приоритет анализа</h3>
+        <canvas id="priorityChart"></canvas>
+    </div>
+    <div class="chart-card">
+        <h3>Тип канала</h3>
+        <canvas id="typeChart"></canvas>
+    </div>
+    <div class="chart-card">
+        <h3>Expert score</h3>
+        <canvas id="expertChart"></canvas>
+    </div>
+    <div class="chart-card">
+        <h3>Темп роста (%/день)</h3>
+        <canvas id="growthChart"></canvas>
+    </div>
+    <div class="chart-card chart-card-wide">
+        <h3>Каналы по нишам (топ-15)</h3>
+        <canvas id="nicheChart"></canvas>
+    </div>
+</div>
+
+<div class="card" style="margin-top: 24px;">
+    <h3 style="margin-top: 0;">Топ-10 по росту подписчиков</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Канал</th>
+                <th>Подписчиков</th>
+                <th>Рост, %/день</th>
+            </tr>
+        </thead>
+        <tbody id="topGrowers"><tr><td colspan="4" class="text-muted">Загрузка...</td></tr></tbody>
+    </table>
+</div>
+
+<style>
+    .charts-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+        margin-top: 16px;
+    }
+    .chart-card {
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 16px;
+        box-shadow: var(--shadow);
+    }
+    .chart-card h3 { margin: 0 0 12px 0; font-size: 14px; color: var(--text-muted); font-weight: 600; }
+    .chart-card-wide { grid-column: 1 / -1; }
+    .card {
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 16px;
+        box-shadow: var(--shadow);
+    }
+    @media (max-width: 900px) {
+        .charts-grid { grid-template-columns: 1fr; }
+    }
+</style>
+
+<script
+    src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"
+    integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g"
+    crossorigin="anonymous"></script>
+<script>
+(async function() {
+    const res = await fetch('/api/dashboard_data');
+    const data = await res.json();
+
+    document.getElementById('statTotal').textContent = data.totals.total;
+    document.getElementById('statVerified').textContent = data.totals.verified;
+    document.getElementById('statScam').textContent = data.totals.scam;
+
+    const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    const palette = [cssVar('--primary'), cssVar('--success'), cssVar('--warning'), cssVar('--danger'), cssVar('--purple'), '#06b6d4', '#ec4899', '#84cc16'];
+    const textColor = cssVar('--text');
+    Chart.defaults.color = textColor;
+    Chart.defaults.borderColor = cssVar('--border');
+
+    new Chart(document.getElementById('priorityChart'), {
+        type: 'doughnut',
+        data: {
+            labels: Object.keys(data.priorities),
+            datasets: [{ data: Object.values(data.priorities), backgroundColor: [cssVar('--success'), cssVar('--warning'), cssVar('--danger')] }]
+        },
+        options: { plugins: { legend: { position: 'bottom' } } }
+    });
+
+    new Chart(document.getElementById('typeChart'), {
+        type: 'doughnut',
+        data: {
+            labels: Object.keys(data.types),
+            datasets: [{ data: Object.values(data.types), backgroundColor: palette }]
+        },
+        options: { plugins: { legend: { position: 'bottom' } } }
+    });
+
+    new Chart(document.getElementById('expertChart'), {
+        type: 'bar',
+        data: {
+            labels: Object.keys(data.expert_score_buckets),
+            datasets: [{ label: 'Каналов', data: Object.values(data.expert_score_buckets), backgroundColor: cssVar('--primary') }]
+        },
+        options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+    });
+
+    new Chart(document.getElementById('growthChart'), {
+        type: 'bar',
+        data: {
+            labels: Object.keys(data.growth_buckets),
+            datasets: [{ label: 'Каналов', data: Object.values(data.growth_buckets), backgroundColor: cssVar('--purple') }]
+        },
+        options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+    });
+
+    const sortedNiches = Object.entries(data.niches).sort((a, b) => b[1] - a[1]).slice(0, 15);
+    new Chart(document.getElementById('nicheChart'), {
+        type: 'bar',
+        data: {
+            labels: sortedNiches.map(n => n[0]),
+            datasets: [{ label: 'Каналов', data: sortedNiches.map(n => n[1]), backgroundColor: cssVar('--primary') }]
+        },
+        options: {
+            indexAxis: 'y',
+            plugins: { legend: { display: false } },
+            scales: { x: { beginAtZero: true } }
+        }
+    });
+
+    const tbody = document.getElementById('topGrowers');
+    while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
+    if (!data.top_growers.length) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 4;
+        td.className = 'text-muted';
+        td.textContent = 'Нет данных (история подписчиков накопится после нескольких запусков)';
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+    } else {
+        data.top_growers.forEach((g, i) => {
+            const tr = document.createElement('tr');
+            const tdRank = document.createElement('td');
+            tdRank.textContent = i + 1;
+            const tdTitle = document.createElement('td');
+            const a = document.createElement('a');
+            a.href = g.link || '#';
+            a.target = '_blank';
+            a.textContent = g.title;
+            tdTitle.appendChild(a);
+            if (g.username) {
+                const span = document.createElement('div');
+                span.className = 'text-muted';
+                span.textContent = g.username;
+                tdTitle.appendChild(span);
+            }
+            const tdSubs = document.createElement('td');
+            tdSubs.textContent = g.participants_count;
+            const tdGrowth = document.createElement('td');
+            const badge = document.createElement('span');
+            badge.className = 'badge badge-expert';
+            badge.textContent = '+' + g.growth_rate + '%';
+            tdGrowth.appendChild(badge);
+            tr.append(tdRank, tdTitle, tdSubs, tdGrowth);
+            tbody.appendChild(tr);
+        });
+    }
+})();
+</script>
+{% endblock %}

@@ -13,12 +13,34 @@ def calc_growth_rate(current_subs: int, cached_subs: int, days_diff: int) -> flo
     """
     if not cached_subs or cached_subs == 0 or days_diff == 0:
         return 0.0
-    
+
     growth = current_subs - cached_subs
     growth_per_day = growth / days_diff
     growth_rate = (growth_per_day / cached_subs) * 100
-    
+
     return round(growth_rate, 2)
+
+
+def calc_growth_rate_from_history(history: list[tuple[float, int]]) -> float:
+    """
+    Считает темп роста (% в день) по истории замеров.
+
+    history: [(ts_unix, subs), ...] отсортированный по времени.
+    Берём первый и последний замер с расстоянием >=1 день, считаем по ним.
+    Если в истории <2 точек или интервал <1 день — возвращаем 0.0.
+    """
+    if not history or len(history) < 2:
+        return 0.0
+
+    first_ts, first_subs = history[0]
+    last_ts, last_subs = history[-1]
+
+    days_diff = (last_ts - first_ts) / 86400
+    if days_diff < 1.0 or first_subs <= 0:
+        return 0.0
+
+    growth_per_day = (last_subs - first_subs) / days_diff
+    return round((growth_per_day / first_subs) * 100, 2)
 
 
 def analyze_sentiment(texts: List[str]) -> float:

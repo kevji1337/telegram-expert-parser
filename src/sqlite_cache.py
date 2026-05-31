@@ -35,6 +35,17 @@ class SQLiteCache:
             )
         """)
 
+        # История подписчиков для расчёта growth_rate
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS subs_history (
+                channel_id TEXT,
+                ts REAL,
+                subs INTEGER,
+                PRIMARY KEY (channel_id, ts)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_subs_history_channel ON subs_history(channel_id)")
+
         conn.commit()
         conn.close()
 
@@ -109,6 +120,31 @@ class SQLiteCache:
 
         conn.commit()
         conn.close()
+
+    def record_subs(self, channel_id: str, subs: int) -> None:
+        """Записывает текущее количество подписчиков в историю"""
+        if not subs or subs <= 0:
+            return
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR REPLACE INTO subs_history (channel_id, ts, subs) VALUES (?, ?, ?)",
+            (str(channel_id), datetime.now().timestamp(), int(subs))
+        )
+        conn.commit()
+        conn.close()
+
+    def get_subs_history(self, channel_id: str) -> list[tuple[float, int]]:
+        """Возвращает [(ts, subs), ...] отсортировано по времени"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT ts, subs FROM subs_history WHERE channel_id = ? ORDER BY ts ASC",
+            (str(channel_id),)
+        )
+        rows = cursor.fetchall()
+        conn.close()
+        return [(float(ts), int(s)) for ts, s in rows]
 
     def get_all_search(self) -> dict[str, list[int]]:
         """Получает весь кэш поиска (для совместимости)"""

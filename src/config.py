@@ -50,6 +50,7 @@ SLEEP_BETWEEN_KEYWORDS_SEC = 2.0
 FLOOD_WAIT_MAX_SEC = 600
 FLOOD_WAIT_SWITCH_THRESHOLD = 300  # Переключаться на другой акк если FloodWait > 5 мин
 CHECKPOINT_EVERY_N_CHANNELS = 25
+PARALLEL_MODE = len(TG_ACCOUNTS) >= 2  # включаем параллельный парсинг при наличии 2+ аккаунтов
 
 MIN_AVG_VIEWS = 350
 SMALL_CHANNEL_THRESHOLD = 5000

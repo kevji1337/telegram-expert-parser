@@ -32,3 +32,12 @@ __pycache__/
 
 # Архив
 archive/
+
+# ОС мусор
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Логи
+*.log
+logs/

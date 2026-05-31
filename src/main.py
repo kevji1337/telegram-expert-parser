@@ -9,8 +9,9 @@ from telethon.errors import FloodWaitError
 from config import (
     ACCOUNT_CONFIGS, TG_ACCOUNTS, KEYWORDS_FILE, OUTPUT_CSV, OUTPUT_SHORTLIST_CSV,
     OUTPUT_DECOMP_CSV, PROGRESS_FILE, CHECKPOINT_EVERY_N_CHANNELS,
-    MIN_PARTICIPANTS, FloodWaitTooLong, FLOOD_WAIT_SWITCH_THRESHOLD
+    MIN_PARTICIPANTS, FloodWaitTooLong, FLOOD_WAIT_SWITCH_THRESHOLD, PARALLEL_MODE
 )
+from performance import split_keywords_across_accounts
 from models import ChannelRow
 from cache import load_niches, load_progress, save_progress
 from sqlite_cache import SQLiteCache
@@ -27,7 +28,7 @@ from keywords import (
     classify_keyword_quality, count_intent_keywords, extract_links, analyze_external_links, extract_mentions,
     analyze_first_person_voice, analyze_cta_markers, analyze_post_structure, detect_autoposting
 )
-from analytics import calc_growth_rate, analyze_sentiment
+from analytics import calc_growth_rate, calc_growth_rate_from_history, analyze_sentiment
 from export import save_csv
 
 
@@ -41,6 +42,9 @@ async def build_row(client, channel, niche_key, niche_title, matched_keyword, ch
         niche_title=niche_title,
         matched_niches=niche_title,
         matched_keywords=matched_keyword,
+        is_verified=bool(getattr(channel, "verified", False)),
+        is_scam=bool(getattr(channel, "scam", False)),
+        is_fake=bool(getattr(channel, "fake", False)),
     )
 
     full = await fetch_channel_full(client, channel, channel_cache)
@@ -152,19 +156,21 @@ async def build_row(client, channel, niche_key, niche_title, matched_keyword, ch
             sentiment_texts.append(post.message)
     row.sentiment_score = analyze_sentiment(sentiment_texts)
 
-    # НОВОЕ: Growth rate (по кэшу: сравниваем текущие подписки с прошлой записью)
-    cached_full = channel_cache.get_channel(str(channel.id), ttl_days=365)
-    if cached_full and cached_full.get("participants_count"):
-        cached_subs = int(cached_full.get("participants_count") or 0)
-        cached_at = cached_full.get("_cached_at_days", 7)  # default fallback
-        if cached_subs and cached_subs != row.participants_count:
-            row.growth_rate = calc_growth_rate(row.participants_count, cached_subs, max(1, int(cached_at)))
+    # Growth rate по истории замеров (subs_history)
+    if row.participants_count > 0:
+        channel_cache.record_subs(str(channel.id), row.participants_count)
+        history = channel_cache.get_subs_history(str(channel.id))
+        row.growth_rate = calc_growth_rate_from_history(history)
 
     row.keyword_match_quality = classify_keyword_quality(row.matched_keywords)
     intent_kw_count = count_intent_keywords(row.matched_keywords)
 
     fp = ""
-    if cls["blacklist_hit"]:
+    if row.is_scam:
+        fp = "scam_flag"
+    elif row.is_fake:
+        fp = "fake_flag"
+    elif cls["blacklist_hit"]:
         fp_map = {"shop": "shop_detected", "brand": "brand_detected", "aggregator": "aggregator_detected", "news": "news_detected"}
         fp = fp_map.get(cls["blacklist_top"], "brand_detected")
     elif cls["expert_marker_count"] == 0 and row.has_personal_brand != "True":
@@ -183,6 +189,258 @@ async def build_row(client, channel, niche_key, niche_title, matched_keyword, ch
     return row
 
 
+async def process_account_keywords(
+    account_name: str,
+    keyword_triples: list[tuple[str, str, str]],
+    seen: dict,
+    seen_lock: asyncio.Lock,
+    cache,
+    state: dict,
+):
+    """
+    Параллельный worker: один аккаунт обрабатывает свой набор ключей.
+
+    keyword_triples: список (niche_key, niche_title, keyword)
+    state: общий словарь со счётчиком processed_count и pending-чекпоинтами
+    """
+    cfg = ACCOUNT_CONFIGS[account_name]
+    print(f"[+] [{account_name}] Подключаюсь (session={cfg['session']}), ключей: {len(keyword_triples)}")
+
+    rate_limiter = AdaptiveRateLimiter(initial_delay=0.35, min_delay=0.1, max_delay=5.0)
+    client = TelegramClient(cfg["session"], cfg["api_id"], cfg["api_hash"])
+    await client.start()
+
+    try:
+        for niche_key, niche_title, kw in keyword_triples:
+            print(f"  [{account_name}] -> '{kw}' ({niche_title})")
+            await rate_limiter.wait()
+
+            try:
+                found = await search_channels(client, kw, cache)
+                rate_limiter.on_success()
+                print(f"     [{account_name}] найдено: {len(found)}")
+            except FloodWaitError as e:
+                rate_limiter.on_flood_wait(e.seconds)
+                if e.seconds > FLOOD_WAIT_SWITCH_THRESHOLD:
+                    raise FloodWaitTooLong(f"FloodWait {e.seconds} сек на {account_name}") from e
+                print(f"     [{account_name}] FloodWait {e.seconds}s")
+                await asyncio.sleep(e.seconds + 1)
+                continue
+            except Exception as e:
+                rate_limiter.on_error()
+                print(f"     [{account_name}] ошибка поиска: {e}")
+                continue
+
+            for ch in found:
+                async with seen_lock:
+                    if ch.id in seen:
+                        existing = seen[ch.id]
+                        kws = [k.strip() for k in existing.matched_keywords.split(",") if k.strip()]
+                        if kw not in kws:
+                            kws.append(kw)
+                            existing.matched_keywords = ", ".join(kws)
+                        nichs = [n.strip() for n in existing.matched_niches.split(",") if n.strip()]
+                        if niche_title not in nichs:
+                            nichs.append(niche_title)
+                            existing.matched_niches = ", ".join(nichs)
+                        existing.keyword_match_quality = classify_keyword_quality(existing.matched_keywords)
+                        if existing.false_positive_reason == "keyword_noise" and existing.keyword_match_quality in ("strong", "medium"):
+                            existing.false_positive_reason = ""
+                        continue
+                    # резервируем место чтобы другие worker'ы не дублировали
+                    seen[ch.id] = None
+
+                await rate_limiter.wait()
+
+                try:
+                    row = await build_row(client, ch, niche_key, niche_title, kw, cache)
+                    rate_limiter.on_success()
+                except FloodWaitError as e:
+                    rate_limiter.on_flood_wait(e.seconds)
+                    async with seen_lock:
+                        seen.pop(ch.id, None)
+                    if e.seconds > FLOOD_WAIT_SWITCH_THRESHOLD:
+                        raise FloodWaitTooLong(f"FloodWait {e.seconds} сек на {account_name}") from e
+                    print(f"     [{account_name}] FloodWait {e.seconds}s")
+                    await asyncio.sleep(e.seconds + 1)
+                    continue
+                except Exception as e:
+                    rate_limiter.on_error()
+                    async with seen_lock:
+                        seen.pop(ch.id, None)
+                    print(f"     [{account_name}] ошибка канала: {e}")
+                    continue
+
+                async with seen_lock:
+                    seen[ch.id] = row
+                    state["processed"] += 1
+                    processed = state["processed"]
+
+                mark = "E" if row.is_expert_channel else ("+" if row.is_suitable else "-")
+                fp = f" FP={row.false_positive_reason}" if row.false_positive_reason else ""
+                print(
+                    f"     [{account_name}] {mark} [{row.priority_status} exp={row.expert_score:3d} aq={row.analysis_queue_score:3d} "
+                    f"type={row.channel_type:10s}] {row.username or row.title} ({row.participants_count} подп.){fp}"
+                )
+
+                if processed % CHECKPOINT_EVERY_N_CHANNELS == 0:
+                    async with seen_lock:
+                        rows_tmp = [r for r in seen.values() if r is not None]
+                    save_csv(rows_tmp, OUTPUT_CSV)
+                    print(f"     [✓] Чекпоинт ({account_name}): {len(rows_tmp)} каналов")
+
+            await asyncio.sleep(2.0)
+
+    finally:
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+
+
+async def run_parallel(niches, cache, seen: dict):
+    """Параллельный режим: ключи разбиваются между аккаунтами и обрабатываются одновременно"""
+    triples: list[tuple[str, str, str]] = []
+    for niche_key, niche_title, keywords in niches:
+        for kw in keywords:
+            triples.append((niche_key, niche_title, kw))
+
+    buckets = split_keywords_across_accounts(triples, len(TG_ACCOUNTS))
+    print(f"[+] Параллельный режим: {len(triples)} ключей разбито на {len(TG_ACCOUNTS)} аккаунтов")
+    for acc, bucket in zip(TG_ACCOUNTS, buckets):
+        print(f"     {acc}: {len(bucket)} ключей")
+
+    seen_lock = asyncio.Lock()
+    state = {"processed": 0}
+
+    tasks = [
+        process_account_keywords(acc, bucket, seen, seen_lock, cache, state)
+        for acc, bucket in zip(TG_ACCOUNTS, buckets) if bucket
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    for acc, result in zip(TG_ACCOUNTS, results):
+        if isinstance(result, Exception):
+            print(f"[!] Аккаунт {acc} упал: {result}")
+
+    # очищаем None-зарезервированные слоты
+    for k in list(seen.keys()):
+        if seen[k] is None:
+            seen.pop(k, None)
+
+    print(f"[+] Параллельный парсинг завершён. Обработано: {state['processed']}")
+
+
+async def _run_recursive_search(seen: dict, cache):
+    """Запускает рекурсивный поиск по упоминаниям через первый доступный аккаунт"""
+    if not seen:
+        return
+    print(f"\n=== Запуск рекурсивного поиска по упоминаниям ===")
+    recursive_queue = RecursiveSearchQueue(max_depth=1, max_channels=100)
+    for ch_id, row in seen.items():
+        if row is None:
+            continue
+        if row.is_expert_channel and row.mentioned_channels:
+            mentions = [m.strip() for m in row.mentioned_channels.split(",") if m.strip()]
+            source_username = row.username.lstrip("@") if row.username else str(ch_id)
+            recursive_queue.add_mentions(source_username, mentions, current_depth=0)
+    print(f"     Очередь рекурсивного поиска: {len(recursive_queue)} каналов")
+    if recursive_queue.is_empty():
+        return
+
+    account_name = TG_ACCOUNTS[0]
+    cfg = ACCOUNT_CONFIGS[account_name]
+    rate_limiter = AdaptiveRateLimiter(initial_delay=0.35, min_delay=0.1, max_delay=5.0)
+    client = TelegramClient(cfg["session"], cfg["api_id"], cfg["api_hash"])
+    await client.start()
+
+    recursive_processed = 0
+    try:
+        while not recursive_queue.is_empty() and recursive_processed < 50:
+            item = recursive_queue.get_next()
+            if not item:
+                break
+            username, depth, source = item
+            await rate_limiter.wait()
+            try:
+                ch = await get_channel_by_username(client, username)
+                if not ch or ch.id in seen:
+                    continue
+                row = await build_row(client, ch, "recursive", "рекурсивный поиск", f"mention:{source}", cache)
+                rate_limiter.on_success()
+                seen[ch.id] = row
+                recursive_processed += 1
+                mark = "E" if row.is_expert_channel else ("+" if row.is_suitable else "-")
+                print(f"     [REC d={depth}] {mark} {row.username or row.title} ({row.participants_count} подп.) <- {source}")
+            except FloodWaitError as e:
+                rate_limiter.on_flood_wait(e.seconds)
+                if e.seconds > FLOOD_WAIT_SWITCH_THRESHOLD:
+                    print(f"     [REC] FloodWait слишком долгий, прерываю рекурсивный поиск")
+                    break
+                await asyncio.sleep(e.seconds + 1)
+            except Exception as e:
+                rate_limiter.on_error()
+                print(f"     [REC] ошибка для {username}: {e}")
+                continue
+
+        networks = recursive_queue.detect_cross_promo_networks()
+        if networks:
+            print(f"\n     Обнаружено кросс-промо сетей: {len(networks)}")
+            for i, net in enumerate(networks[:5], 1):
+                print(f"       Сеть #{i}: {', '.join(list(net)[:5])}")
+    finally:
+        await client.disconnect()
+
+
+def _finalize_and_save(seen: dict):
+    """Сортирует каналы, выделяет шортлист/декомпозицию, сохраняет 3 CSV"""
+    rows = [r for r in seen.values() if r is not None]
+
+    apq_order = {"ANALYZE": 0, "RESERVE": 1, "IGNORE": 2}
+    rows.sort(key=lambda r: (
+        apq_order.get(r.analysis_priority, 2),
+        -r.analysis_queue_score,
+        -r.expert_score,
+        -r.avg_post_reach,
+        -r.avg_comments,
+    ))
+
+    eligible = [r for r in rows if r.is_expert_channel and not r.false_positive_reason and r.avg_post_reach >= 300]
+    for idx, r in enumerate(eligible, start=1):
+        r.final_rank = idx
+    for r in eligible[:20]:
+        r.selected_for_manual_analysis = True
+
+    decomp_candidates = [
+        r for r in eligible[:20]
+        if r.avg_comments > 3
+        and r.avg_post_reach >= 700
+        and r.days_since_last_post <= 14
+        and r.channel_type not in ("brand", "aggregator")
+    ]
+    for r in decomp_candidates[:5]:
+        r.selected_for_decomposition = True
+
+    save_csv(rows, OUTPUT_CSV)
+    save_csv([r for r in rows if r.selected_for_manual_analysis], OUTPUT_SHORTLIST_CSV)
+    save_csv([r for r in rows if r.selected_for_decomposition], OUTPUT_DECOMP_CSV)
+
+    buckets = {"ANALYZE": 0, "RESERVE": 0, "IGNORE": 0}
+    for r in rows:
+        buckets[r.analysis_priority] = buckets.get(r.analysis_priority, 0) + 1
+
+    manual_count = sum(1 for r in rows if r.selected_for_manual_analysis)
+    decomp_count = sum(1 for r in rows if r.selected_for_decomposition)
+
+    print("\n=== Очередь ручного анализа ===")
+    print(f"ANALYZE:  {buckets['ANALYZE']} каналов")
+    print(f"RESERVE:  {buckets['RESERVE']} каналов")
+    print(f"IGNORE:   {buckets['IGNORE']} каналов")
+    print("\n=== Отобрано для работы ===")
+    print(f"Ручной анализ (selected_for_manual_analysis): {manual_count} каналов")
+    print(f"Декомпозиция (selected_for_decomposition):     {decomp_count} каналов")
+
+
 async def main():
     """Основной цикл парсера"""
     niches = load_niches(KEYWORDS_FILE)
@@ -199,6 +457,16 @@ async def main():
     seen = {}
     processed_count = 0
     account_idx = 0
+
+    if PARALLEL_MODE:
+        try:
+            await run_parallel(niches, cache, seen)
+        except Exception as e:
+            print(f"[!] Параллельный режим упал: {e}. Сохраняю что есть.")
+
+        await _run_recursive_search(seen, cache)
+        _finalize_and_save(seen)
+        return
 
     while account_idx < len(TG_ACCOUNTS):
         account_name = TG_ACCOUNTS[account_idx]

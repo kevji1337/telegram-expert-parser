@@ -59,6 +59,10 @@ class ChannelRow:
     has_testimonials: str = "unknown"
     has_personal_brand: str = "unknown"
 
+    is_verified: bool = False
+    is_scam: bool = False
+    is_fake: bool = False
+
     has_youtube: bool = False
     has_instagram: bool = False
     has_getcourse: bool = False
