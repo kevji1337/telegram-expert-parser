@@ -16,8 +16,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config import OUTPUT_CSV, OUTPUT_SHORTLIST_CSV, OUTPUT_DECOMP_CSV
 from parser_runner import parser_runner
+from auth_manager import telegram_auth_manager
 
-app = Flask(__name__)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+PUBLIC_DIR = PROJECT_ROOT / "public"
+
+app = Flask(__name__, static_folder=str(PUBLIC_DIR), static_url_path="/public")
 
 
 def load_csv(path: str) -> list[dict]:
@@ -137,6 +141,12 @@ def channel_detail(idx: int):
 def parser_page():
     """Страница управления парсером"""
     return render_template("parser.html")
+
+
+@app.route("/accounts")
+def accounts_page():
+    """Страница Telegram-аккаунтов и сессий"""
+    return render_template("accounts.html")
 
 
 @app.route("/dashboard")
@@ -276,10 +286,131 @@ def download(file_type: str):
         "shortlist": OUTPUT_SHORTLIST_CSV,
         "decomp": OUTPUT_DECOMP_CSV,
     }
-    path = paths.get(file_type)
-    if not path or not os.path.exists(path):
+    rel = paths.get(file_type)
+    if not rel:
+        return "Файл не найден", 404
+    path = rel if os.path.isabs(rel) else os.path.join(PROJECT_ROOT, rel)
+    if not os.path.exists(path):
         return "Файл не найден", 404
     return send_file(path, as_attachment=True)
+
+
+# === API: Telegram-аккаунты и авторизация ===
+
+
+def _json_error(error: Exception, status: int = 400):
+    return jsonify({"error": str(error).strip("'")}), status
+
+
+@app.route("/api/accounts")
+def api_accounts():
+    return jsonify({"accounts": telegram_auth_manager.list_accounts()})
+
+
+@app.route("/api/accounts/<account>/check", methods=["POST"])
+def api_account_check(account: str):
+    try:
+        return jsonify(telegram_auth_manager.check_account(account))
+    except KeyError as e:
+        return _json_error(e, 404)
+    except Exception as e:
+        return _json_error(e)
+
+
+@app.route("/api/accounts/<account>/auth/status")
+def api_account_auth_status(account: str):
+    try:
+        flow = telegram_auth_manager.get_flow(account)
+        return jsonify(flow or {"account": account, "status": "idle", "message": "Авторизация не запущена", "active": False})
+    except KeyError as e:
+        return _json_error(e, 404)
+
+
+@app.route("/api/accounts/<account>/auth/start", methods=["POST"])
+def api_account_auth_start(account: str):
+    data = request.get_json(silent=True) or {}
+    try:
+        return jsonify(telegram_auth_manager.start_auth(account, data.get("phone", "")))
+    except KeyError as e:
+        return _json_error(e, 404)
+    except (RuntimeError, ValueError) as e:
+        return _json_error(e)
+
+
+@app.route("/api/accounts/<account>/auth/code", methods=["POST"])
+def api_account_auth_code(account: str):
+    data = request.get_json(silent=True) or {}
+    try:
+        return jsonify(telegram_auth_manager.submit_code(account, data.get("code", "")))
+    except KeyError as e:
+        return _json_error(e, 404)
+    except (RuntimeError, ValueError) as e:
+        return _json_error(e)
+
+
+@app.route("/api/accounts/<account>/auth/password", methods=["POST"])
+def api_account_auth_password(account: str):
+    data = request.get_json(silent=True) or {}
+    try:
+        return jsonify(telegram_auth_manager.submit_password(account, data.get("password", "")))
+    except KeyError as e:
+        return _json_error(e, 404)
+    except (RuntimeError, ValueError) as e:
+        return _json_error(e)
+
+
+@app.route("/api/accounts/<account>/auth/cancel", methods=["POST"])
+def api_account_auth_cancel(account: str):
+    try:
+        return jsonify(telegram_auth_manager.cancel(account))
+    except KeyError as e:
+        return _json_error(e, 404)
+    except RuntimeError as e:
+        return _json_error(e)
+
+
+@app.route("/api/accounts/<account>/session", methods=["DELETE"])
+def api_account_session_delete(account: str):
+    try:
+        return jsonify(telegram_auth_manager.delete_session(account))
+    except KeyError as e:
+        return _json_error(e, 404)
+    except Exception as e:
+        return _json_error(e)
+
+
+@app.route("/api/accounts/check_all", methods=["POST"])
+def api_accounts_check_all():
+    try:
+        return jsonify({"results": telegram_auth_manager.check_all_accounts()})
+    except Exception as e:
+        return _json_error(e)
+
+
+@app.route("/api/accounts/add", methods=["POST"])
+def api_accounts_add():
+    data = request.get_json(silent=True) or {}
+    try:
+        return jsonify(telegram_auth_manager.add_account(
+            data.get("phone", ""),
+            data.get("api_id", ""),
+            data.get("api_hash", ""),
+        ))
+    except ValueError as e:
+        return _json_error(e)
+    except Exception as e:
+        return _json_error(e, 500)
+
+
+@app.route("/api/accounts/<account>", methods=["DELETE"])
+def api_account_remove(account: str):
+    delete_session = request.args.get("delete_session", "1") == "1"
+    try:
+        return jsonify(telegram_auth_manager.remove_account(account, delete_session=delete_session))
+    except KeyError as e:
+        return _json_error(e, 404)
+    except Exception as e:
+        return _json_error(e)
 
 
 # === API: управление парсером ===

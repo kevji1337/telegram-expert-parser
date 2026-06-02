@@ -4,27 +4,42 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}TG Parser{% endblock %}</title>
+    <link rel="icon" type="image/png" href="/public/icon.png">
+    <link rel="apple-touch-icon" href="/public/icon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         :root[data-theme="dark"] {
-            --bg: #0f172a;
-            --bg-elevated: #1e293b;
-            --bg-hover: #334155;
-            --border: #334155;
+            --bg: #0a0e1a;
+            --bg-elevated: #131a2b;
+            --bg-elevated-2: #1a2236;
+            --bg-hover: #243049;
+            --border: #1f2a44;
+            --border-strong: #2d3a5a;
             --text: #f1f5f9;
-            --text-muted: #94a3b8;
+            --text-muted: #8b96b0;
             --primary: #3b82f6;
-            --primary-hover: #2563eb;
+            --primary-hover: #60a5fa;
             --success: #22c55e;
             --warning: #f59e0b;
             --danger: #ef4444;
             --purple: #a855f7;
-            --shadow: 0 4px 6px -1px rgba(0,0,0,0.4);
+            --pink: #ec4899;
+            --gradient-primary: linear-gradient(135deg, #3b82f6 0%, #a855f7 100%);
+            --gradient-success: linear-gradient(135deg, #22c55e 0%, #14b8a6 100%);
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+            --shadow: 0 4px 12px -2px rgba(0,0,0,0.5);
+            --shadow-lg: 0 20px 40px -10px rgba(0,0,0,0.6);
+            --glow-primary: 0 0 20px rgba(59,130,246,0.15);
         }
         :root[data-theme="light"] {
-            --bg: #f8fafc;
+            --bg: #f6f8fc;
             --bg-elevated: #ffffff;
-            --bg-hover: #f1f5f9;
-            --border: #e2e8f0;
+            --bg-elevated-2: #fafbff;
+            --bg-hover: #eef2f9;
+            --border: #e3e8f1;
+            --border-strong: #cbd4e1;
             --text: #0f172a;
             --text-muted: #64748b;
             --primary: #2563eb;
@@ -33,18 +48,32 @@
             --warning: #d97706;
             --danger: #dc2626;
             --purple: #9333ea;
-            --shadow: 0 1px 3px rgba(0,0,0,0.1);
+            --pink: #db2777;
+            --gradient-primary: linear-gradient(135deg, #2563eb 0%, #9333ea 100%);
+            --gradient-success: linear-gradient(135deg, #16a34a 0%, #0d9488 100%);
+            --shadow-sm: 0 1px 2px rgba(15,23,42,0.05);
+            --shadow: 0 4px 16px -4px rgba(15,23,42,0.1);
+            --shadow-lg: 0 20px 40px -10px rgba(15,23,42,0.15);
+            --glow-primary: 0 0 20px rgba(37,99,235,0.1);
         }
         * { box-sizing: border-box; }
         html, body { margin: 0; padding: 0; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+            font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
             background: var(--bg);
             color: var(--text);
             font-size: 14px;
-            line-height: 1.5;
+            line-height: 1.55;
             min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            letter-spacing: -0.01em;
         }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; border: 2px solid var(--bg); }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
         .layout {
             display: grid;
             grid-template-columns: 240px 1fr;
@@ -54,121 +83,175 @@
         .sidebar {
             background: var(--bg-elevated);
             border-right: 1px solid var(--border);
-            padding: 24px 16px;
+            padding: 20px 14px 80px;
             position: sticky;
             top: 0;
             height: 100vh;
             overflow-y: auto;
         }
         .sidebar-brand {
-            font-size: 18px;
+            font-size: 17px;
             font-weight: 700;
-            margin-bottom: 24px;
-            padding: 0 12px;
+            margin-bottom: 28px;
+            padding: 4px 10px;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
+            letter-spacing: -0.02em;
         }
         .sidebar-brand .logo {
-            width: 32px;
-            height: 32px;
-            background: linear-gradient(135deg, var(--primary), var(--purple));
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: 800;
+            width: 34px;
+            height: 34px;
+            border-radius: 10px;
+            object-fit: cover;
+            box-shadow: var(--shadow-sm);
         }
         .nav-item {
             display: flex;
             align-items: center;
-            gap: 10px;
-            padding: 10px 12px;
+            gap: 11px;
+            padding: 9px 12px;
             color: var(--text-muted);
             text-decoration: none;
-            border-radius: 8px;
-            margin-bottom: 4px;
-            transition: all 0.15s;
+            border-radius: 9px;
+            margin-bottom: 2px;
+            transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
             font-weight: 500;
+            font-size: 13.5px;
+            position: relative;
+        }
+        .nav-item svg {
+            width: 17px;
+            height: 17px;
+            stroke-width: 1.8;
+            flex-shrink: 0;
+            opacity: 0.85;
         }
         .nav-item:hover {
             background: var(--bg-hover);
             color: var(--text);
+            transform: translateX(2px);
         }
         .nav-item.active {
-            background: var(--primary);
+            background: var(--gradient-primary);
             color: white;
+            box-shadow: var(--glow-primary);
         }
+        .nav-item.active svg { opacity: 1; }
         .nav-section {
-            font-size: 11px;
+            font-size: 10px;
             text-transform: uppercase;
             color: var(--text-muted);
-            padding: 16px 12px 8px;
-            font-weight: 600;
-            letter-spacing: 0.05em;
+            padding: 18px 12px 6px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            opacity: 0.7;
         }
         .theme-toggle {
             position: absolute;
-            bottom: 20px;
-            left: 16px;
-            right: 16px;
-            padding: 10px;
+            bottom: 16px;
+            left: 14px;
+            right: 14px;
+            padding: 10px 14px;
             background: var(--bg-hover);
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: 10px;
             color: var(--text);
             cursor: pointer;
             font-size: 13px;
+            font-weight: 500;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
         }
+        .theme-toggle:hover { border-color: var(--primary); color: var(--primary); }
+        .theme-toggle svg { width: 16px; height: 16px; }
+        .theme-icon { display: none; }
+        :root[data-theme="dark"] .icon-sun { display: inline-block; }
+        :root[data-theme="light"] .icon-moon { display: inline-block; }
         /* Main */
         .main {
-            padding: 32px;
+            padding: 36px 40px;
             overflow-x: auto;
+            max-width: 100%;
         }
         .page-header {
-            margin-bottom: 24px;
+            margin-bottom: 28px;
         }
         .page-title {
-            font-size: 28px;
-            font-weight: 700;
-            margin: 0 0 4px;
+            font-size: 30px;
+            font-weight: 800;
+            margin: 0 0 6px;
+            letter-spacing: -0.03em;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            display: inline-block;
         }
         .page-subtitle {
             color: var(--text-muted);
             margin: 0;
+            font-size: 14px;
         }
         /* Stats cards */
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-            gap: 12px;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 14px;
             margin-bottom: 24px;
         }
         .stat-card {
             background: var(--bg-elevated);
             border: 1px solid var(--border);
-            padding: 16px 20px;
-            border-radius: 12px;
+            padding: 18px 20px;
+            border-radius: 14px;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
         }
+        .stat-card::before {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+            background: var(--border);
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .stat-card:hover {
+            border-color: var(--border-strong);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow);
+        }
+        .stat-card:hover::before { opacity: 1; }
         .stat-card .num {
-            font-size: 28px;
-            font-weight: 700;
+            font-size: 30px;
+            font-weight: 800;
             color: var(--text);
             line-height: 1;
+            letter-spacing: -0.02em;
         }
         .stat-card .label {
-            font-size: 12px;
+            font-size: 11px;
             color: var(--text-muted);
             text-transform: uppercase;
-            margin-top: 6px;
-            letter-spacing: 0.03em;
+            margin-top: 8px;
+            letter-spacing: 0.06em;
+            font-weight: 600;
         }
         .stat-card.accent .num { color: var(--primary); }
+        .stat-card.accent::before { background: var(--primary); }
         .stat-card.success .num { color: var(--success); }
+        .stat-card.success::before { background: var(--success); }
         .stat-card.warning .num { color: var(--warning); }
+        .stat-card.warning::before { background: var(--warning); }
         .stat-card.danger .num { color: var(--danger); }
+        .stat-card.danger::before { background: var(--danger); }
         .stat-card.purple .num { color: var(--purple); }
+        .stat-card.purple::before { background: var(--purple); }
         /* Filters */
         .filters {
             background: var(--bg-elevated);
@@ -184,18 +267,21 @@
             align-items: center;
         }
         input, select {
-            padding: 8px 12px;
+            padding: 9px 13px;
             background: var(--bg);
             color: var(--text);
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: 9px;
             font-size: 13px;
             font-family: inherit;
+            transition: all 0.15s;
         }
         input:focus, select:focus {
             outline: none;
             border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
         }
+        input::placeholder { color: var(--text-muted); opacity: 0.6; }
         label {
             display: flex;
             align-items: center;
@@ -204,35 +290,48 @@
             color: var(--text-muted);
         }
         .btn {
-            padding: 8px 16px;
+            padding: 9px 16px;
             background: var(--primary);
             color: white;
             border: none;
-            border-radius: 8px;
+            border-radius: 9px;
             font-size: 13px;
-            font-weight: 500;
+            font-weight: 600;
             cursor: pointer;
             text-decoration: none;
             display: inline-flex;
             align-items: center;
-            gap: 6px;
-            transition: background 0.15s;
+            gap: 7px;
+            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
             font-family: inherit;
+            box-shadow: var(--shadow-sm);
+            letter-spacing: -0.01em;
         }
-        .btn:hover { background: var(--primary-hover); }
+        .btn:hover {
+            background: var(--primary-hover);
+            transform: translateY(-1px);
+            box-shadow: var(--shadow);
+        }
+        .btn:active { transform: translateY(0); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
         .btn-secondary {
             background: var(--bg-hover);
             color: var(--text);
+            box-shadow: none;
+            border: 1px solid var(--border);
         }
-        .btn-secondary:hover { background: var(--border); }
+        .btn-secondary:hover { background: var(--bg-elevated-2); border-color: var(--border-strong); }
         .btn-success { background: var(--success); }
+        .btn-success:hover { background: var(--success); filter: brightness(1.1); }
         .btn-danger { background: var(--danger); }
+        .btn-danger:hover { background: var(--danger); filter: brightness(1.1); }
         /* Table */
         .table-wrap {
             background: var(--bg-elevated);
             border: 1px solid var(--border);
-            border-radius: 12px;
+            border-radius: 14px;
             overflow: hidden;
+            box-shadow: var(--shadow-sm);
         }
         table {
             width: 100%;
@@ -284,9 +383,12 @@
             background: var(--bg-elevated);
             border: 1px solid var(--border);
             padding: 24px;
-            border-radius: 12px;
+            border-radius: 14px;
             margin-bottom: 16px;
+            box-shadow: var(--shadow-sm);
+            transition: border-color 0.15s;
         }
+        .card:hover { border-color: var(--border-strong); }
         .card h3 {
             margin: 0 0 8px;
             font-size: 18px;
@@ -379,22 +481,58 @@
     <div class="layout">
         <aside class="sidebar">
             <div class="sidebar-brand">
-                <div class="logo">TG</div>
-                <span>Parser</span>
+                <img class="logo" src="/public/icon.png" alt="TG Parser">
+                <span>TG Parser</span>
             </div>
             <div class="nav-section">Каналы</div>
-            <a href="/" class="nav-item {% if request.endpoint == 'index' %}active{% endif %}">Все каналы</a>
-            <a href="/dashboard" class="nav-item {% if request.endpoint == 'dashboard' %}active{% endif %}">Дашборд</a>
-            <a href="/shortlist" class="nav-item {% if request.endpoint == 'shortlist' %}active{% endif %}">Шортлист</a>
-            <a href="/decomposition" class="nav-item {% if request.endpoint == 'decomposition' %}active{% endif %}">Декомпозиция</a>
+            <a href="/" class="nav-item {% if request.endpoint == 'index' %}active{% endif %}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 6h18M3 12h18M3 18h18"/></svg>
+                Все каналы
+            </a>
+            <a href="/dashboard" class="nav-item {% if request.endpoint == 'dashboard' %}active{% endif %}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3v18h18M7 14l4-4 4 4 5-7"/></svg>
+                Дашборд
+            </a>
+            <a href="/shortlist" class="nav-item {% if request.endpoint == 'shortlist' %}active{% endif %}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 11l3 3 8-8M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+                Шортлист
+            </a>
+            <a href="/decomposition" class="nav-item {% if request.endpoint == 'decomposition' %}active{% endif %}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 2v20M2 12h20M5 5l14 14M19 5L5 19"/></svg>
+                Декомпозиция
+            </a>
 
             <div class="nav-section">Парсер</div>
-            <a href="/parser" class="nav-item {% if request.endpoint == 'parser_page' %}active{% endif %}">Запуск парсера</a>
+            <a href="/parser" class="nav-item {% if request.endpoint == 'parser_page' %}active{% endif %}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5 3l14 9-14 9V3z"/></svg>
+                Запуск парсера
+            </a>
+            <a href="/accounts" class="nav-item {% if request.endpoint == 'accounts_page' %}active{% endif %}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+                Аккаунты
+            </a>
 
             <div class="nav-section">Экспорт</div>
-            <a href="/download/full" class="nav-item">Скачать CSV</a>
+            <a href="/download/full" class="nav-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                Скачать CSV
+            </a>
 
-            <button class="theme-toggle" onclick="toggleTheme()">Сменить тему</button>
+            <button class="theme-toggle" onclick="toggleTheme()">
+                <svg class="theme-icon icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+                <svg class="theme-icon icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="5"/>
+                    <line x1="12" y1="1" x2="12" y2="3" stroke-linecap="round"/>
+                    <line x1="12" y1="21" x2="12" y2="23" stroke-linecap="round"/>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" stroke-linecap="round"/>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" stroke-linecap="round"/>
+                    <line x1="1" y1="12" x2="3" y2="12" stroke-linecap="round"/>
+                    <line x1="21" y1="12" x2="23" y2="12" stroke-linecap="round"/>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" stroke-linecap="round"/>
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" stroke-linecap="round"/>
+                </svg>
+                <span id="theme-label">Тёмная тема</span>
+            </button>
         </aside>
 
         <main class="main">
@@ -403,15 +541,22 @@
     </div>
 
     <script>
+        function updateThemeUi() {
+            const theme = document.documentElement.getAttribute('data-theme');
+            const label = document.getElementById('theme-label');
+            if (label) label.textContent = theme === 'dark' ? 'Светлая тема' : 'Тёмная тема';
+        }
         function toggleTheme() {
             const html = document.documentElement;
             const current = html.getAttribute('data-theme');
             const next = current === 'dark' ? 'light' : 'dark';
             html.setAttribute('data-theme', next);
             localStorage.setItem('theme', next);
+            updateThemeUi();
         }
         const saved = localStorage.getItem('theme');
         if (saved) document.documentElement.setAttribute('data-theme', saved);
+        document.addEventListener('DOMContentLoaded', updateThemeUi);
     </script>
     {% block scripts %}{% endblock %}
 </body>

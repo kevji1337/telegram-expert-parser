@@ -1,0 +1,668 @@
+{% extends "base.html" %}
+{% block title %}Аккаунты - TG Parser{% endblock %}
+{% block content %}
+<style>
+    .accounts-toolbar {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-bottom: 18px;
+    }
+    .accounts-toolbar .spacer { flex: 1; }
+    .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+    .accounts-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+        gap: 16px;
+    }
+    .acc-card {
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 0;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        transition: border-color 0.15s, transform 0.15s;
+    }
+    .acc-card:hover { border-color: var(--primary); transform: translateY(-1px); }
+    .acc-card.is-authorized { border-color: rgba(34,197,94,0.4); }
+    .acc-card.is-error { border-color: rgba(239,68,68,0.4); }
+    .acc-card.is-missing { border-color: rgba(245,158,11,0.4); }
+    .acc-head {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 18px 20px;
+        background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(168,85,247,0.05));
+        border-bottom: 1px solid var(--border);
+    }
+    .acc-avatar {
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, var(--primary), var(--purple));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        color: white;
+        font-size: 18px;
+        flex-shrink: 0;
+        letter-spacing: 0.5px;
+    }
+    .acc-title { font-size: 16px; font-weight: 700; margin: 0; word-break: break-all; }
+    .acc-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; font-family: "JetBrains Mono", Menlo, monospace; }
+    .acc-body { padding: 16px 20px; flex: 1; display: flex; flex-direction: column; gap: 12px; }
+    .acc-status-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    .acc-msg { font-size: 12px; color: var(--text-muted); }
+    .acc-user {
+        background: rgba(34,197,94,0.08);
+        border: 1px solid rgba(34,197,94,0.25);
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-size: 13px;
+    }
+    .acc-user .name { font-weight: 600; }
+    .acc-user .uname { color: var(--text-muted); font-family: "JetBrains Mono", Menlo, monospace; font-size: 12px; }
+    .acc-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 12px 20px;
+        border-top: 1px solid var(--border);
+        background: var(--bg);
+    }
+    .acc-actions .btn { padding: 6px 12px; font-size: 12px; }
+    .acc-form { display: none; flex-direction: column; gap: 8px; padding: 12px 20px; background: var(--bg); border-top: 1px solid var(--border); }
+    .acc-form.show { display: flex; }
+    .acc-form input { width: 100%; }
+    .acc-form-row { display: flex; gap: 8px; align-items: center; }
+    .acc-form-row .btn { flex-shrink: 0; }
+    .icon-btn {
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--text-muted);
+        padding: 6px 10px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 13px;
+        transition: all 0.15s;
+    }
+    .icon-btn:hover { color: var(--text); border-color: var(--primary); }
+    .icon-btn.danger:hover { color: var(--danger); border-color: var(--danger); }
+    /* Modal */
+    .modal-backdrop {
+        position: fixed; inset: 0;
+        background: rgba(0,0,0,0.6);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+        backdrop-filter: blur(4px);
+    }
+    .modal-backdrop.show { display: flex; }
+    .modal {
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 28px;
+        width: min(480px, 92vw);
+        box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+    }
+    .modal h2 { margin: 0 0 18px; font-size: 20px; }
+    .modal-field { margin-bottom: 14px; }
+    .modal-field label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .modal-field input { width: 100%; padding: 10px 14px; font-size: 14px; }
+    .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+    .modal-hint { font-size: 12px; color: var(--text-muted); background: var(--bg); padding: 10px 12px; border-radius: 8px; margin-bottom: 16px; line-height: 1.5; }
+    .toast {
+        position: fixed; bottom: 24px; right: 24px;
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        border-left: 4px solid var(--primary);
+        border-radius: 10px;
+        padding: 14px 18px;
+        max-width: 380px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+        font-size: 13px;
+        opacity: 0;
+        transform: translateY(10px);
+        transition: all 0.2s;
+        z-index: 200;
+        pointer-events: none;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.success { border-left-color: var(--success); }
+    .toast.error { border-left-color: var(--danger); }
+    .toast.warn { border-left-color: var(--warning); }
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: var(--text-muted);
+    }
+    .spinner {
+        display: inline-block;
+        width: 12px; height: 12px;
+        border: 2px solid var(--border);
+        border-top-color: var(--primary);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+
+<div class="page-header">
+    <h1 class="page-title">Telegram-аккаунты</h1>
+    <p class="page-subtitle">Проверка сессий, авторизация и управление аккаунтами без консоли</p>
+</div>
+
+<div class="accounts-toolbar">
+    <button id="btn-refresh" class="btn btn-secondary">↻ Обновить</button>
+    <button id="btn-check-all" class="btn">✓ Проверить все сессии</button>
+    <button id="btn-add" class="btn btn-success">＋ Добавить аккаунт</button>
+    <div class="spacer"></div>
+    <div class="text-muted">Источник: <code>.env / TG_ACCOUNTS</code></div>
+</div>
+
+<div class="summary-grid" id="summary"></div>
+
+<div id="accounts-list" class="accounts-grid"></div>
+
+<!-- Modal: Add account -->
+<div id="modal-add" class="modal-backdrop">
+    <div class="modal">
+        <h2>Новый аккаунт</h2>
+        <div class="modal-hint">
+            Получи <b>api_id</b> и <b>api_hash</b> на <a href="https://my.telegram.org/apps" target="_blank">my.telegram.org/apps</a>.
+            Данные сохраняются в <code>.env</code>. После добавления сразу запусти авторизацию.
+        </div>
+        <div class="modal-field">
+            <label>Номер телефона</label>
+            <input id="add-phone" placeholder="+375291234567" autocomplete="off">
+        </div>
+        <div class="modal-field">
+            <label>API ID</label>
+            <input id="add-api-id" placeholder="12345678" autocomplete="off" inputmode="numeric">
+        </div>
+        <div class="modal-field">
+            <label>API Hash</label>
+            <input id="add-api-hash" placeholder="abcdef1234567890..." autocomplete="off">
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" data-close="modal-add">Отмена</button>
+            <button id="btn-add-submit" class="btn btn-success">Добавить</button>
+        </div>
+    </div>
+</div>
+
+<div id="toast" class="toast"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const accountsList = document.getElementById('accounts-list');
+const summary = document.getElementById('summary');
+const flowTimers = new Map();
+const checkResults = new Map();
+const expandedForms = new Set();
+
+const STATUS_LABELS = {
+    idle: 'Не запущено',
+    starting: 'Старт',
+    connecting: 'Подключение',
+    checking: 'Проверка',
+    sending_code: 'Отправка кода',
+    waiting_code: 'Ждёт код',
+    waiting_password: 'Ждёт 2FA',
+    authorized: 'Авторизован',
+    canceled: 'Отменено',
+    error: 'Ошибка',
+    missing_session: 'Нет сессии',
+    unauthorized: 'Не авторизован',
+};
+
+function statusClass(status) {
+    if (status === 'authorized') return 'finished';
+    if (status === 'error') return 'error';
+    if (['starting', 'connecting', 'checking', 'sending_code', 'waiting_code', 'waiting_password'].includes(status)) return 'running';
+    return 'idle';
+}
+
+function cardClass(check, auth) {
+    if (auth && auth.status === 'error') return 'is-error';
+    if (auth && auth.status === 'authorized') return 'is-authorized';
+    if (check) {
+        if (check.status === 'authorized') return 'is-authorized';
+        if (check.status === 'error') return 'is-error';
+        if (check.status === 'missing_session' || check.status === 'unauthorized') return 'is-missing';
+    }
+    return '';
+}
+
+function appendText(parent, tag, className, text) {
+    const el = document.createElement(tag);
+    if (className) el.className = className;
+    el.textContent = text ?? '';
+    parent.appendChild(el);
+    return el;
+}
+
+function appendBadge(parent, className, text) {
+    return appendText(parent, 'span', `badge ${className}`, text);
+}
+
+function avatarInitials(account) {
+    const digits = account.replace(/[^\d]/g, '');
+    return digits.slice(-2) || 'TG';
+}
+
+function toast(message, kind = 'success') {
+    const el = document.getElementById('toast');
+    el.textContent = message;
+    el.className = `toast show ${kind}`;
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => { el.className = 'toast'; }, 3500);
+}
+
+function addButton(parent, className, action, account, text, disabled = false) {
+    const button = appendText(parent, 'button', `btn ${className}`, text);
+    button.dataset.action = action;
+    button.dataset.account = account;
+    button.disabled = disabled;
+    return button;
+}
+
+function buildStatusPill(parent, status, label) {
+    const pill = appendText(parent, 'span', `status-pill ${statusClass(status)}`, '');
+    appendText(pill, 'span', 'dot', '');
+    appendText(pill, 'span', '', label || STATUS_LABELS[status] || status);
+    return pill;
+}
+
+function renderAccount(account, inputValues = new Map()) {
+    const auth = account.auth || {status: 'idle', message: 'Авторизация не запущена', active: false};
+    const check = checkResults.get(account.account);
+
+    const card = document.createElement('div');
+    card.className = `acc-card ${cardClass(check, auth)}`;
+    card.dataset.account = account.account;
+
+    // Head
+    const head = document.createElement('div');
+    head.className = 'acc-head';
+    card.appendChild(head);
+
+    const avatar = appendText(head, 'div', 'acc-avatar', avatarInitials(account.account));
+    const titleBox = document.createElement('div');
+    titleBox.style.flex = '1';
+    titleBox.style.minWidth = '0';
+    head.appendChild(titleBox);
+    appendText(titleBox, 'div', 'acc-title', account.account);
+    appendText(titleBox, 'div', 'acc-sub', `api_id ${account.api_id} · session ${account.session_exists ? '✓' : '✗'}`);
+
+    // Body
+    const body = document.createElement('div');
+    body.className = 'acc-body';
+    card.appendChild(body);
+
+    const statusRow = document.createElement('div');
+    statusRow.className = 'acc-status-row';
+    body.appendChild(statusRow);
+
+    if (auth.active || auth.status !== 'idle') {
+        buildStatusPill(statusRow, auth.status);
+        appendText(statusRow, 'span', 'acc-msg', auth.message || '');
+    } else if (check) {
+        buildStatusPill(statusRow, check.status, STATUS_LABELS[check.status] || check.status);
+        appendText(statusRow, 'span', 'acc-msg', check.message || '');
+    } else {
+        const pill = appendText(statusRow, 'span', 'status-pill idle', '');
+        appendText(pill, 'span', 'dot', '');
+        appendText(pill, 'span', '', account.session_exists ? 'Сессия есть' : 'Сессии нет');
+        appendText(statusRow, 'span', 'acc-msg', account.session_exists ? 'Нажми «Проверить», чтобы узнать статус' : 'Нажми «Войти» для авторизации');
+    }
+
+    if (auth.error) {
+        appendText(body, 'div', 'console-line error', auth.error);
+    }
+
+    if (check && check.user) {
+        const u = check.user;
+        const userBox = document.createElement('div');
+        userBox.className = 'acc-user';
+        body.appendChild(userBox);
+        const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || '(без имени)';
+        appendText(userBox, 'div', 'name', name);
+        const meta = [u.username ? '@' + u.username : null, u.phone, u.id ? 'id ' + u.id : null].filter(Boolean).join(' · ');
+        appendText(userBox, 'div', 'uname', meta);
+    }
+
+    if (check && check.error) {
+        appendText(body, 'div', 'console-line error', check.error);
+    }
+
+    // Inline auth form (shown when waiting_code / waiting_password / starting)
+    const showCode = auth.status === 'waiting_code';
+    const showPassword = auth.status === 'waiting_password';
+    const showPhoneForm = expandedForms.has(account.account) && !auth.active;
+
+    if (showPhoneForm) {
+        const form = document.createElement('div');
+        form.className = 'acc-form show';
+        form.style.borderTop = '1px solid var(--border)';
+        body.appendChild(form);
+        appendText(form, 'label', '', 'Номер телефона');
+        const row = document.createElement('div');
+        row.className = 'acc-form-row';
+        form.appendChild(row);
+        const phoneInput = document.createElement('input');
+        phoneInput.dataset.role = 'phone';
+        phoneInput.dataset.account = account.account;
+        phoneInput.placeholder = '+375291234567';
+        phoneInput.value = inputValues.get(`${account.account}:phone`) || account.default_phone || '';
+        phoneInput.style.flex = '1';
+        row.appendChild(phoneInput);
+        addButton(row, 'btn-success', 'start', account.account, 'Отправить код');
+    }
+
+    if (showCode) {
+        const form = document.createElement('div');
+        form.className = 'acc-form show';
+        body.appendChild(form);
+        appendText(form, 'label', '', 'Код из Telegram');
+        const row = document.createElement('div');
+        row.className = 'acc-form-row';
+        form.appendChild(row);
+        const codeInput = document.createElement('input');
+        codeInput.dataset.role = 'code';
+        codeInput.dataset.account = account.account;
+        codeInput.placeholder = '12345';
+        codeInput.autocomplete = 'one-time-code';
+        codeInput.value = inputValues.get(`${account.account}:code`) || '';
+        codeInput.style.flex = '1';
+        row.appendChild(codeInput);
+        addButton(row, 'btn-success', 'code', account.account, 'Подтвердить');
+    }
+
+    if (showPassword) {
+        const form = document.createElement('div');
+        form.className = 'acc-form show';
+        body.appendChild(form);
+        appendText(form, 'label', '', 'Пароль 2FA');
+        const row = document.createElement('div');
+        row.className = 'acc-form-row';
+        form.appendChild(row);
+        const pwInput = document.createElement('input');
+        pwInput.dataset.role = 'password';
+        pwInput.dataset.account = account.account;
+        pwInput.type = 'password';
+        pwInput.placeholder = '••••••';
+        pwInput.autocomplete = 'current-password';
+        pwInput.value = inputValues.get(`${account.account}:password`) || '';
+        pwInput.style.flex = '1';
+        row.appendChild(pwInput);
+        addButton(row, 'btn-success', 'password', account.account, 'Отправить 2FA');
+    }
+
+    // Actions
+    const actions = document.createElement('div');
+    actions.className = 'acc-actions';
+    card.appendChild(actions);
+
+    addButton(actions, 'btn-secondary', 'check', account.account, '✓ Проверить');
+
+    if (auth.active) {
+        addButton(actions, 'btn-danger', 'cancel', account.account, '✕ Отменить');
+    } else {
+        addButton(actions, 'btn-success', 'toggle-form', account.account, account.session_exists ? '↻ Перевойти' : '→ Войти');
+    }
+
+    if (account.session_exists) {
+        addButton(actions, 'btn-danger', 'delete-session', account.account, '🗑 Сессию');
+    }
+
+    addButton(actions, 'btn-danger', 'remove-account', account.account, '✕ Аккаунт');
+
+    return card;
+}
+
+function renderSummary(accounts) {
+    summary.replaceChildren();
+    let total = accounts.length;
+    let authorized = 0, missing = 0, errors = 0;
+    for (const a of accounts) {
+        const c = checkResults.get(a.account);
+        if (!a.session_exists) { missing++; continue; }
+        if (c) {
+            if (c.status === 'authorized') authorized++;
+            else if (c.status === 'error') errors++;
+            else if (c.status === 'missing_session' || c.status === 'unauthorized') missing++;
+        }
+    }
+    const cards = [
+        {label: 'Всего', num: total, cls: 'accent'},
+        {label: 'Авторизованы', num: authorized, cls: 'success'},
+        {label: 'Нужна авторизация', num: missing, cls: 'warning'},
+        {label: 'Ошибки', num: errors, cls: 'danger'},
+    ];
+    for (const c of cards) {
+        const card = appendText(summary, 'div', `stat-card ${c.cls}`, '');
+        appendText(card, 'div', 'num', c.num);
+        appendText(card, 'div', 'label', c.label);
+    }
+}
+
+async function fetchJson(url, options = {}) {
+    const res = await fetch(url, options);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+}
+
+async function loadAccounts() {
+    const inputValues = new Map();
+    for (const input of accountsList.querySelectorAll('input[data-role][data-account]')) {
+        inputValues.set(`${input.dataset.account}:${input.dataset.role}`, input.value);
+    }
+
+    const data = await fetchJson('/api/accounts');
+    renderSummary(data.accounts);
+    accountsList.replaceChildren();
+    if (!data.accounts.length) {
+        const empty = appendText(accountsList, 'div', 'empty-state', '');
+        empty.style.gridColumn = '1 / -1';
+        appendText(empty, 'div', '', 'Аккаунтов в .env нет');
+        appendText(empty, 'p', 'text-muted', 'Нажми «Добавить аккаунт», чтобы создать первый');
+        return;
+    }
+    for (const account of data.accounts) {
+        accountsList.appendChild(renderAccount(account, inputValues));
+        const auth = account.auth;
+        if (auth && auth.active) startPolling(account.account);
+        else stopPolling(account.account);
+    }
+}
+
+function accountInput(account, role) {
+    return document.querySelector(`[data-role="${role}"][data-account="${CSS.escape(account)}"]`);
+}
+
+function startPolling(account) {
+    if (flowTimers.has(account)) return;
+    const timer = setInterval(async () => {
+        try {
+            const status = await fetchJson(`/api/accounts/${encodeURIComponent(account)}/auth/status`);
+            if (!status.active) {
+                stopPolling(account);
+                if (status.status === 'authorized') {
+                    expandedForms.delete(account);
+                    const checked = await fetchJson(`/api/accounts/${encodeURIComponent(account)}/check`, {method: 'POST'});
+                    checkResults.set(account, checked);
+                    toast(`Аккаунт ${account} авторизован`, 'success');
+                }
+            }
+            await loadAccounts();
+        } catch (e) {
+            stopPolling(account);
+            toast(e.message, 'error');
+        }
+    }, 1500);
+    flowTimers.set(account, timer);
+}
+
+function stopPolling(account) {
+    const timer = flowTimers.get(account);
+    if (timer) clearInterval(timer);
+    flowTimers.delete(account);
+}
+
+async function checkAll() {
+    const btn = document.getElementById('btn-check-all');
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.replaceChildren();
+    const spinner = document.createElement('span');
+    spinner.className = 'spinner';
+    btn.appendChild(spinner);
+    btn.appendChild(document.createTextNode(' Проверяю...'));
+    try {
+        const data = await fetchJson('/api/accounts/check_all', {method: 'POST'});
+        for (const r of data.results) checkResults.set(r.account, r);
+        await loadAccounts();
+        toast(`Проверено ${data.results.length} аккаунтов`, 'success');
+    } catch (e) {
+        toast(e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = original;
+    }
+}
+
+accountsList.addEventListener('click', async (event) => {
+    const button = event.target.closest('button[data-action]');
+    if (!button) return;
+    const account = button.dataset.account;
+    const action = button.dataset.action;
+    button.disabled = true;
+    try {
+        if (action === 'check') {
+            const data = await fetchJson(`/api/accounts/${encodeURIComponent(account)}/check`, {method: 'POST'});
+            checkResults.set(account, data);
+        } else if (action === 'toggle-form') {
+            if (expandedForms.has(account)) expandedForms.delete(account);
+            else expandedForms.add(account);
+        } else if (action === 'start') {
+            const phone = accountInput(account, 'phone')?.value || '';
+            await fetchJson(`/api/accounts/${encodeURIComponent(account)}/auth/start`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({phone})
+            });
+            expandedForms.delete(account);
+            startPolling(account);
+        } else if (action === 'code') {
+            const codeInput = accountInput(account, 'code');
+            await fetchJson(`/api/accounts/${encodeURIComponent(account)}/auth/code`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({code: codeInput?.value || ''})
+            });
+            if (codeInput) codeInput.value = '';
+            startPolling(account);
+        } else if (action === 'password') {
+            const pwInput = accountInput(account, 'password');
+            await fetchJson(`/api/accounts/${encodeURIComponent(account)}/auth/password`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({password: pwInput?.value || ''})
+            });
+            if (pwInput) pwInput.value = '';
+            startPolling(account);
+        } else if (action === 'cancel') {
+            await fetchJson(`/api/accounts/${encodeURIComponent(account)}/auth/cancel`, {method: 'POST'});
+            stopPolling(account);
+            toast(`Авторизация ${account} отменена`, 'warn');
+        } else if (action === 'delete-session') {
+            if (!confirm(`Удалить файл сессии для ${account}? После этого нужно будет залогиниться заново.`)) {
+                button.disabled = false; return;
+            }
+            const data = await fetchJson(`/api/accounts/${encodeURIComponent(account)}/session`, {method: 'DELETE'});
+            checkResults.delete(account);
+            toast(`Удалены файлы: ${data.removed.join(', ') || '—'}`, 'warn');
+        } else if (action === 'remove-account') {
+            if (!confirm(`Удалить аккаунт ${account} из .env? Файл сессии тоже будет удалён.`)) {
+                button.disabled = false; return;
+            }
+            await fetchJson(`/api/accounts/${encodeURIComponent(account)}?delete_session=1`, {method: 'DELETE'});
+            checkResults.delete(account);
+            expandedForms.delete(account);
+            toast(`Аккаунт ${account} удалён`, 'warn');
+        }
+        await loadAccounts();
+    } catch (e) {
+        toast(e.message, 'error');
+        await loadAccounts();
+    } finally {
+        button.disabled = false;
+    }
+});
+
+// Toolbar
+document.getElementById('btn-refresh').addEventListener('click', loadAccounts);
+document.getElementById('btn-check-all').addEventListener('click', checkAll);
+
+// Modal
+const modalAdd = document.getElementById('modal-add');
+document.getElementById('btn-add').addEventListener('click', () => {
+    modalAdd.classList.add('show');
+    setTimeout(() => document.getElementById('add-phone').focus(), 50);
+});
+modalAdd.addEventListener('click', (e) => {
+    if (e.target === modalAdd || e.target.dataset.close === 'modal-add') {
+        modalAdd.classList.remove('show');
+    }
+});
+document.getElementById('btn-add-submit').addEventListener('click', async () => {
+    const phone = document.getElementById('add-phone').value.trim();
+    const apiId = document.getElementById('add-api-id').value.trim();
+    const apiHash = document.getElementById('add-api-hash').value.trim();
+    try {
+        const data = await fetchJson('/api/accounts/add', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({phone, api_id: apiId, api_hash: apiHash})
+        });
+        modalAdd.classList.remove('show');
+        document.getElementById('add-phone').value = '';
+        document.getElementById('add-api-id').value = '';
+        document.getElementById('add-api-hash').value = '';
+        expandedForms.add(data.account);
+        toast(`Аккаунт ${data.account} добавлен. Нажми «Войти» для авторизации.`, 'success');
+        await loadAccounts();
+    } catch (e) {
+        toast(e.message, 'error');
+    }
+});
+
+// Initial load + autocheck
+loadAccounts()
+    .then(() => checkAll())
+    .catch(e => {
+        accountsList.replaceChildren();
+        appendText(accountsList, 'div', 'console-line error', e.message);
+    });
+</script>
+{% endblock %}

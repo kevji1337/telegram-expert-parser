@@ -92,6 +92,7 @@ class ChannelRow:
     top_post_views: int = 0
     top_post_link: str = ""
     sentiment_score: float = 0.0
+    comment_sentiment_score: float = 0.0
 
     top_signals: str = ""
 

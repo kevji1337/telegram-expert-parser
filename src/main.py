@@ -16,7 +16,10 @@ from models import ChannelRow
 from cache import load_niches, load_progress, save_progress
 from sqlite_cache import SQLiteCache
 from rate_limiter import AdaptiveRateLimiter
-from telegram_client import search_channels, fetch_channel_full, fetch_last_posts, fetch_pinned_text, get_channel_by_username
+from telegram_client import (
+    search_channels, fetch_channel_full, fetch_last_posts, fetch_pinned_text,
+    fetch_comments_from_posts, get_channel_by_username
+)
 from recursive_search import RecursiveSearchQueue
 from metrics import calc_metrics
 from classification import classify_channel
@@ -155,6 +158,10 @@ async def build_row(client, channel, niche_key, niche_title, matched_keyword, ch
         if post.message:
             sentiment_texts.append(post.message)
     row.sentiment_score = analyze_sentiment(sentiment_texts)
+
+    if metrics["median_comments"] > 0:
+        comments = await fetch_comments_from_posts(client, channel, posts)
+        row.comment_sentiment_score = analyze_sentiment(comments)
 
     # Growth rate по истории замеров (subs_history)
     if row.participants_count > 0:

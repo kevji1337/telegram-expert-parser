@@ -23,7 +23,8 @@
         <div class="stat-mini">Постов/нед: <strong>{{ row.posts_per_week }}</strong></div>
         <div class="stat-mini">Expert: <strong>{{ row.expert_score }}</strong></div>
         <div class="stat-mini">AQ: <strong>{{ row.analysis_queue_score }}</strong></div>
-        <div class="stat-mini">Sentiment: <strong>{{ row.sentiment_score }}</strong></div>
+        <div class="stat-mini">Sentiment автора: <strong>{{ row.sentiment_score }}</strong></div>
+        <div class="stat-mini">Sentiment комментов: <strong>{{ row.comment_sentiment_score }}</strong></div>
     </div>
     {% if row.about %}
     <div class="text-block">{{ row.about[:400] }}</div>
