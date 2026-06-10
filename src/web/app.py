@@ -24,11 +24,29 @@ PUBLIC_DIR = PROJECT_ROOT / "public"
 app = Flask(__name__, static_folder=str(PUBLIC_DIR), static_url_path="/public")
 
 
+_csv_cache: dict[str, tuple[float, list[dict]]] = {}
+
+
 def load_csv(path: str) -> list[dict]:
+    """CSV cached by mtime — re-read only when file changes."""
     if not os.path.exists(path):
+        _csv_cache.pop(path, None)
         return []
+    mtime = os.path.getmtime(path)
+    cached = _csv_cache.get(path)
+    if cached and cached[0] == mtime:
+        return cached[1]
     with open(path, "r", encoding="utf-8-sig") as f:
-        return list(csv.DictReader(f, delimiter=";"))
+        rows = list(csv.DictReader(f, delimiter=";"))
+    _csv_cache[path] = (mtime, rows)
+    return rows
+
+
+def invalidate_csv_cache(path: str | None = None) -> None:
+    if path is None:
+        _csv_cache.clear()
+    else:
+        _csv_cache.pop(path, None)
 
 
 def filter_rows(rows: list[dict], filters: dict) -> list[dict]:
@@ -276,6 +294,7 @@ def update_status():
             writer.writeheader()
             writer.writerows(rows)
 
+    invalidate_csv_cache(OUTPUT_CSV)
     return jsonify({"ok": True})
 
 

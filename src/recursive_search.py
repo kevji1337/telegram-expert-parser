@@ -54,6 +54,12 @@ class RecursiveSearchQueue:
     def is_empty(self) -> bool:
         """Проверяет пуста ли очередь"""
         return len(self.queue) == 0
+
+    def __len__(self) -> int:
+        return len(self.queue)
+
+    def __bool__(self) -> bool:
+        return bool(self.queue)
     
     def detect_cross_promo_networks(self, min_mutual_mentions: int = 2) -> List[Set[str]]:
         """
